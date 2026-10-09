@@ -941,17 +941,23 @@ with st.sidebar:
     st.progress(min(day_n / CONTEST_DAYS, 1.0), text=f"Día bursátil {day_n} de {CONTEST_DAYS}")
 
     st.subheader("🌎 Universo de activos")
-    sel_sectors = st.multiselect("Sectores BVC", list(BVC_SECTORS), default=list(BVC_SECTORS))
+    # Dos vías COMPLEMENTARIAS (el universo final es la UNIÓN de ambas):
+    #   1) Sectores completos -> agrega todas las acciones de cada sector elegido.
+    #   2) Acciones individuales -> cualquier acción de cualquier sector, sin restricción.
+    sel_sectors = st.multiselect(
+        "① Sectores completos (agrega todas sus acciones)", list(BVC_SECTORS), default=[],
+        format_func=lambda s: f"{s} ({len(BVC_SECTORS[s])})",
+        help="Opcional. Cada sector elegido suma todas sus acciones al universo.")
     sector_tickers = [t for s in sel_sectors for t in BVC_SECTORS[s]]
-    all_sector = st.checkbox("Incluir TODAS las acciones de los sectores elegidos", value=False,
-                             help="Útil para escanear todo el mercado en las señales (la 1.ª descarga tarda más).")
-    if all_sector:
-        sel_local = sector_tickers
-        st.caption(f"{len(sel_local)} acciones locales incluidas.")
-    else:
-        sel_local = st.multiselect("Acciones locales (BVC)", sector_tickers,
-                                   default=[t for t in DEFAULT_LOCAL if t in sector_tickers],
-                                   format_func=lambda t: f"{label(t)} · {SECTOR_OF.get(t, '')}")
+    sel_manual = st.multiselect(
+        "② Acciones individuales (de cualquier sector)", list(LOCAL_STOCKS), default=DEFAULT_LOCAL,
+        format_func=lambda t: f"{label(t)} · {SECTOR_OF.get(t, '')}",
+        help="Elige libremente acciones de cualquier sector; se suman a las de ①.")
+    sel_local = list(dict.fromkeys(sector_tickers + sel_manual))
+    if sel_local:
+        by_sec = pd.Series([SECTOR_OF.get(t, "Otro") for t in sel_local]).value_counts()
+        st.caption(f"**{len(sel_local)} acciones locales** en el universo: "
+                   + " · ".join(f"{s} {n}" for s, n in by_sec.items()))
     sel_mgc = st.multiselect("Mercado Global Colombiano (MGC)", list(MGC_STOCKS), default=DEFAULT_MGC,
                              format_func=label)
     extra_txt = st.text_input("Tickers adicionales (separados por coma)", "",
