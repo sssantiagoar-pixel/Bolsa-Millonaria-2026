@@ -90,7 +90,14 @@ INITIAL_CAPITAL = 100_000_000.0     # Capital ficticio inicial (COP)
 COMMISSION = 7_437.50               # Comisión plana Trii Pro por orden (COP)
 TRADING_DAYS = 252                  # Ruedas por año (anualización)
 CONTEST_DAYS = 20                   # Horizonte del concurso (ruedas)
-STATE_FILE = Path(__file__).with_name("portafolio_simulador.json")  # autoguardado
+STATE_FILE = Path(__file__).with_name("portafolio_simulador.json")  # autoguardado (solo local)
+
+# Modo compartido (multiusuario): en Streamlit Community Cloud el código vive en /mount/src.
+# Ahí se desactiva el archivo JSON común y cada visitante tiene su portafolio en st.session_state
+# (se conserva con Exportar/Importar JSON). Se puede forzar con la variable BM_SHARED_MODE=1.
+import os
+SHARED_MODE = (Path(__file__).resolve().as_posix().startswith("/mount/src")
+               or os.environ.get("BM_SHARED_MODE", "").strip() in ("1", "true", "True"))
 
 # Acciones locales (BVC) clasificadas por sector -> {ticker: nombre}
 # Verificadas en Yahoo Finance el 2026-10-08. BCOLOMBIA.CL / PFBCOLOM(B).CL ya no tienen
@@ -389,6 +396,8 @@ def _default_state() -> dict:
 
 
 def load_state_file() -> dict | None:
+    if SHARED_MODE:   # en la nube cada usuario arranca con su propio portafolio en memoria
+        return None
     try:
         if STATE_FILE.exists():
             return json.loads(STATE_FILE.read_text(encoding="utf-8"))
@@ -398,7 +407,9 @@ def load_state_file() -> dict | None:
 
 
 def save_state():
-    """Persistencia en disco: sobrevive a recargas del navegador / reinicios."""
+    """Persistencia en disco: sobrevive a recargas del navegador / reinicios (solo uso local)."""
+    if SHARED_MODE:   # nunca escribir un archivo común a todos los usuarios del servidor
+        return
     try:
         payload = {k: st.session_state[k] for k in STATE_KEYS}
         STATE_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str),
@@ -963,7 +974,11 @@ with st.sidebar:
         rerun()
 
     st.subheader("💾 Persistencia")
-    st.caption(f"Autoguardado en `{STATE_FILE.name}`")
+    if SHARED_MODE:
+        st.warning("🌐 Versión web: tu portafolio vive solo en esta pestaña del navegador. "
+                   "**Exporta el JSON al terminar** y vuelve a importarlo en tu próxima sesión.")
+    else:
+        st.caption(f"Autoguardado en `{STATE_FILE.name}`")
     export = {k: st.session_state[k] for k in STATE_KEYS}
     st.download_button("⬇️ Exportar portafolio (JSON)", json.dumps(export, ensure_ascii=False, indent=2, default=str),
                        file_name=f"portafolio_{dt.date.today()}.json", mime="application/json")
